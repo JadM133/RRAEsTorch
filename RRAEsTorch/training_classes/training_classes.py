@@ -25,7 +25,6 @@ import matplotlib.pyplot as plt
 from prettytable import PrettyTable
 import torch
 from torch.utils.data import TensorDataset, DataLoader
-from adabelief_pytorch import AdaBelief
 
 class Circular_list:
     """
@@ -221,7 +220,7 @@ class Trainor_class:
         tracker=Null_Tracker(),
         stagn_window=20,
         eps_fn=lambda lat, bs: None,
-        optimizer=AdaBelief,
+        optimizer=torch.optim.Adam,
         verbatim = {
                     "print_type": "std",
                     "window_size" : 5,  
