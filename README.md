@@ -61,9 +61,9 @@ kwargs: {} (any other kwargs you might need)
 
 # Installation
 
-pip install RRAEs
+pip install RRAEsTorch
 
 Or to get the newest changes:
 
-pip install git+https://github.com/JadM133/RRAEs.git
+pip install git+https://github.com/JadM133/RRAEsTorch.git
 
