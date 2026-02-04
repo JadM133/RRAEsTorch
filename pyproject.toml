@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "RRAEsTorch"
+version = "0.1.0"
+description= " A repo for RRAEs in PyTorch."
+readme="README.md"
+requires-python= ">=3.10"
+license={text= "MIT"}
+authors=[{name="Jad Mounayer", email="jad.mounayer@outlook.com"}]
+dependencies = ["tqdm", "pytest", "dill", "matplotlib", "numpy", "pandas", "jaxtyping", "prettytable", "torch", "torchvision"]
