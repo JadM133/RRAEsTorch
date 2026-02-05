@@ -7,7 +7,6 @@ from RRAEsTorch.utilities import (
     stable_SVD,
 )   
 from RRAEsTorch.wrappers import vmap_wrap
-import jax.random as jrandom
 import warnings
 from torch.nn import Linear
 from RRAEsTorch.AE_base import get_autoencoder_base
