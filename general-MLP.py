@@ -29,8 +29,8 @@ if __name__ == "__main__":
     trainor = Trainor_class(
         inp,
         model_cls,
-        in_channels=inp.shape[0],
-        hidden_channels=[100, out.shape[0]],
+        in_channels=inp.shape[1],
+        hidden_channels=[100, out.shape[1]],
         folder="folder_name/",
         file="saved_model.pkl",
     )
