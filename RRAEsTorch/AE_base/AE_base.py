@@ -1,5 +1,4 @@
 from RRAEsTorch.utilities import MLP_with_linear 
-import jax.random as jrandom
 import torch.nn as nn
 from torch.func import vmap
 
