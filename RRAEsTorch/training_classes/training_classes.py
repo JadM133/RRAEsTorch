@@ -306,7 +306,7 @@ class Trainor_class:
         for steps, lr, batch_size in zip(step_st, lr_st, batch_size_st):
             try:
                 t_t = 0.0  # Zero time
-                optimizer = torch.optim.Adam(
+                optimizer_tr = optimizer(
                     filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3
                 )
 
@@ -340,11 +340,11 @@ class Trainor_class:
                     step_kwargs = merge_dicts(loss_kwargs, track_params)
 
                     # Compute loss
-                    loss, model, optimizer, (aux, extra_track) = make_step(
+                    loss, model, optimizer_tr, (aux, extra_track) = make_step(
                                                                 model,
                                                                 input_b,
                                                                 out_b,
-                                                                optimizer,
+                                                                optimizer_tr,
                                                                 idx_b,
                                                                 epsilon,
                                                                 **step_kwargs,
@@ -390,7 +390,7 @@ class Trainor_class:
                         self.del_file(f"checkpoint_k_{track_params.get('k_max')}")
                         model = self.model
 
-                        optimizer = torch.optim.Adam(
+                        optimizer_tr = optimizer(
                             filter(lambda p: p.requires_grad, model.parameters()), lr=lr
                         )
 
