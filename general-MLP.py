@@ -9,14 +9,14 @@ import torch
 
 if __name__ == "__main__":
     # Step 1: Get the data - in this case dummy data is generated.
-    inp = random.normal(size=(10, 80))
-    out = np.expand_dims(np.sum(inp, axis=0) ** 2 / 4 + 3, 0)
+    inp = random.normal(size=(80, 10))
+    out = np.expand_dims(np.sum(inp, axis=-1) ** 2 / 4 + 3, 1)
 
     inp = torch.tensor(inp, dtype=torch.float32)
     out = torch.tensor(out, dtype=torch.float32)
 
     # The shape should be what's expected in your model as inputs and outputs.
-    print(f"Shape of data is {inp.shape} (D1 x N) and {out.shape} (D2 x N)")
+    print(f"Shape of data is {inp.shape} (N x D1) and {out.shape} (N x D2)")
 
     # Step 2: Specify the model to use, do not declare an instance of the class.
     # i.e. do not open/close parenthesis.
@@ -33,10 +33,6 @@ if __name__ == "__main__":
         hidden_channels=[100, out.shape[0]],
         folder="folder_name/",
         file="saved_model.pkl",
-        norm_in="None",
-        norm_out="None",
-        call_map_axis=-1, # The dimension of your data, to parallelize over.
-        call_map_count=1,
     )
 
     # Step 4: Define the kw arguments for training. When using the Strong RRAE formulation,
