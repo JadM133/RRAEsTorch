@@ -25,7 +25,7 @@ if __name__ == "__main__":
         args,
     ) = get_data(problem)
 
-    print(f"Shape of data is {x_train.shape} (T x Ntr) and {x_test.shape} (T x Nt)")
+    print(f"Shape of data is {x_train.shape} (Ntr x C x H x W) and {x_test.shape} (Nt x C x H x W)")
 
     # Step 2: Specify the model to use, Strong_RRAE_MLP is ours (recommended).
     method = "RRAE"
@@ -45,9 +45,9 @@ if __name__ == "__main__":
         x_train,
         model_cls,
         latent_size=latent_size,
-        height=x_train.shape[1],
-        width=x_train.shape[2],
-        channels=x_train.shape[0],
+        channels=x_train.shape[1],
+        height=x_train.shape[2],
+        width=x_train.shape[3],
         k_max=k_max,
         folder=f"{problem}/{method}_{problem}/",
         file=f"{method}_{problem}.pkl",

@@ -11,6 +11,7 @@ import itertools
 from torchvision.ops import MLP
 import torch
 from torch.func import vmap
+from torch.utils.data import TensorDataset, DataLoader
 
 ##################### ML Training/Evaluation functions ##########################
 
@@ -83,11 +84,11 @@ def eval_with_batches(
         idxs = np.concatenate(idxs)
         match end_type:
             case "concat_and_resort":
-                final_pred = np.concatenate(all_preds, -1)[..., np.argsort(idxs)]
+                final_pred = np.concatenate(all_preds)[np.argsort(idxs)]
             case "concat":
-                final_pred = np.concatenate(all_preds, -1)
+                final_pred = np.concatenate(all_preds)
             case "stack":
-                final_pred = np.stack(all_preds, -1)
+                final_pred = np.stack(all_preds)
             case "mean":
                 final_pred = sum(all_preds) / len(all_preds)
             case "sum":
@@ -106,13 +107,13 @@ def loss_generator(which=None, norm_loss_=None):
 
     if (which == "default") or (which == "Vanilla"):
         def loss_fun(model, input, out, **kwargs):
-            pred = model(input, keep_normalized=True)
+            pred = model(input)
             aux = {"loss": norm_loss_(pred, out)}
             return norm_loss_(pred, out), (aux, {})
         
     elif which == "RRAE":
         def loss_fun(model, input, out, *, k_max, **kwargs):
-            pred = model(input, k_max=k_max, keep_normalized=True)
+            pred = model(input, k_max=k_max)
             aux = {"loss": norm_loss_(pred, out), "k_max": k_max}
             return norm_loss_(pred, out), (aux, {})
     
@@ -120,7 +121,7 @@ def loss_generator(which=None, norm_loss_=None):
         def loss_fun(
             model, input, out, *, sparsity=0.05, beta=1.0, **kwargs
         ):
-            pred = model(input, keep_normalized=True)
+            pred = model(input)
             lat = model.latent(input)
             sparse_term = sparsity * torch.log(sparsity / (torch.mean(lat) + 1e-8)) + (
                 1 - sparsity
@@ -203,7 +204,7 @@ def loss_generator(which=None, norm_loss_=None):
         def loss_fun(model, input, out, *, beta=1.0, find_weight=None, **kwargs):
             assert find_weight is not None
             lat = model.latent(input)
-            pred = model(input, keep_normalized=True)
+            pred = model(input)
             W = find_weight(model)
             W = find_weight(model)
             dh = lat * (1 - lat)
@@ -343,12 +344,12 @@ def divide_return(
 
 
     return (
-        torch.tensor(x_train, dtype=torch.float32),
-        torch.tensor(x_test, dtype=torch.float32),
-        torch.tensor(p_train, dtype=torch.float32) if p_train is not None else None,
-        torch.tensor(p_test, dtype=torch.float32) if p_test is not None else None,
-        torch.tensor(output_train, dtype=torch.float32),
-        torch.tensor(output_test, dtype=torch.float32),
+        torch.tensor(x_train, dtype=torch.float32).moveaxis(-1, 0),
+        torch.tensor(x_test, dtype=torch.float32).moveaxis(-1, 0),
+        torch.tensor(p_train, dtype=torch.float32).moveaxis(-1, 0) if p_train is not None else None,
+        torch.tensor(p_test, dtype=torch.float32).moveaxis(-1, 0) if p_test is not None else None,
+        torch.tensor(output_train, dtype=torch.float32).moveaxis(-1, 0),
+        torch.tensor(output_test, dtype=torch.float32).moveaxis(-1, 0),
         pre_func_in,
         pre_func_out,
         args,
@@ -404,6 +405,13 @@ def get_data(problem, folder=None, train_size=1000, test_size=10000, **kwargs):
             y_test = torch.tensor(np.expand_dims(test_data, 0), dtype=torch.float32)
             p_train = torch.tensor(np.stack([x0_mesh, y0_mesh], axis=-1), dtype=torch.float32)
             p_test = torch.tensor(np.stack([x0_mesh_test, y0_mesh_test], axis=-1), dtype=torch.float32)
+
+            x_train = x_train.moveaxis(-1, 0)  # permute to (Ntr x ...)
+            x_test = x_test.moveaxis(-1, 0)    #
+            y_train = y_train.moveaxis(-1, 0)  # permute to (Ntr x ...)
+            y_test = y_test.moveaxis(-1, 0)    #
+            p_train = p_train.moveaxis(1, 0)  # permute to (Ntr x P)
+            p_test = p_test.moveaxis(1, 0)    #
             return x_train, x_test, p_train, p_test, y_train, y_test, lambda x: x, lambda x: x, ()
 
 
@@ -439,6 +447,12 @@ def get_data(problem, folder=None, train_size=1000, test_size=10000, **kwargs):
             pre_func_out = lambda x: np.array(x, dtype=np.float32) / 255.0
             x_train = np.swapaxes(x_train, 0, -1)
             x_test = np.swapaxes(x_test, 0, -1)
+
+            x_train = torch.tensor(x_train, dtype=torch.float32)
+            x_test = torch.tensor(x_test, dtype=torch.float32)
+            x_train = x_train.moveaxis(-1, 0)  # permute to (Ntr x ...)
+            x_test = x_test.moveaxis(-1, 0)    # permute to
+
             return x_train, x_test, None, None, x_train, x_test, pre_func_in, pre_func_out, ()
         
         case "CelebA":
@@ -472,8 +486,11 @@ def get_data(problem, folder=None, train_size=1000, test_size=10000, **kwargs):
             x_test = data[..., 182638:]
             y_train = x_train
             y_test = x_test
-            pre_func_in = lambda x: np.astype(x, np.float32) / 255.0
-            pre_func_out = lambda x: np.astype(x, np.float32) / 255.0
+            pre_func_in = lambda x: torch.tensor(np.astype(x, np.float32) / 255.0, dtype=torch.float32)
+            pre_func_out = lambda x: torch.tensor(np.astype(x, np.float32) / 255.0, dtype=torch.float32)
+            x_train = np.moveaxis(x_train, -1, 0)  # permute to (Ntr x ...)
+            x_test = np.moveaxis(x_test, -1, 0)    # permute to (Ntr x ...)
+
             return (
                 x_train,
                 x_test,
@@ -653,6 +670,7 @@ def get_data(problem, folder=None, train_size=1000, test_size=10000, **kwargs):
             import numpy as np
             import pickle as pkl
 
+
             if os.path.exists(f"{folder}/mnist_data.npy"):
                 print("Loading data from file")
                 with open(f"{folder}/mnist_data.npy", "rb") as f:
@@ -694,6 +712,11 @@ def get_data(problem, folder=None, train_size=1000, test_size=10000, **kwargs):
                 test_images = np.swapaxes(np.moveaxis(test_images, 1, -1), 0, -1)
                 with open(f"{folder}/mnist_data.npy", "wb") as f:
                     pkl.dump((train_images, train_labels, test_images, test_labels), f)
+
+            train_images = torch.tensor(train_images, dtype=torch.float32)
+            test_images = torch.tensor(test_images, dtype=torch.float32)
+            train_images = train_images.moveaxis(-1, 0)  # permute to (Ntr x ...)
+            test_images = test_images.moveaxis(-1, 0)    # permute to (Ntr x ...)
 
             return (
                 train_images,
@@ -769,7 +792,33 @@ class StableSVD(torch.autograd.Function):
         dA = U @ K @ Vh
 
         return dA, None, None
+
+def get_basis(get_basis, model=None, k_max=None, batch_size=None, inp=None, end_type="concat", device="cpu", basis_kwargs={}, pre_func_inp=lambda x:x, AE_func=lambda m:m):
     
+    with torch.no_grad():
+        if get_basis:
+
+            dataset = TensorDataset(inp)
+            dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+            all_bases = []
+            
+            for inp_b in dataloader:
+                all_bases.append(AE_func(model).latent(
+                    pre_func_inp(inp_b[0].to(device)), get_basis_coeffs=True, **basis_kwargs
+                )[0].to("cpu")
+                )
+            if end_type == "concat":
+                all_bases = torch.concatenate(all_bases, dim=1)
+                basis = torch.linalg.svd(all_bases, full_matrices=False)[0]
+                basis = basis[:, :k_max]
+            else:
+                basis = all_bases
+        else:
+            bas = model.latent(pre_func_inp(inp[..., 0:1].to(device)), get_basis_coeffs=True, **basis_kwargs)[0].to("cpu")
+            basis = torch.eye(bas.shape[0])
+        return basis
+
 ######################## Typical Neural Network Architecturs ##############################
 
 class MLP_with_linear(torch.nn.Module):
@@ -987,8 +1036,8 @@ class CNNs_with_MLP(torch.nn.Module):
 
     def forward(self, x, *args, **kwargs):
         x = self.layers[0](x)
-        x = torch.unsqueeze(torch.flatten(x), -1)
-        x = self.layers[1](torch.squeeze(x))
+        x = torch.flatten(x, start_dim=1)
+        x = self.layers[1](x)
         x = self.final_act(x)
         return x
 
@@ -1180,8 +1229,9 @@ class MLP_with_CNNs_trans(torch.nn.Module):
         self.out_after_mlp = out_after_mlp
 
     def forward(self, x, *args, **kwargs):
+        bs = x.shape[0]
         x = self.layers[0](x)
-        x = torch.reshape(x, (self.out_after_mlp, *self.d_shape))
+        x = torch.reshape(x, (bs, self.out_after_mlp, *self.d_shape))
         x = self.layers[1](x)
         x = self.layers[2](x)
         x = self.final_act(x)
@@ -1323,8 +1373,8 @@ class CNN3D_with_MLP(torch.nn.Module):
 
     def forward(self, x, *args, **kwargs):
         x = self.layers[0](x)
-        x = torch.unsqueeze(torch.flatten(x), -1)
-        x = self.layers[1](torch.squeeze(x))
+        x = torch.flatten(x, start_dim=1)
+        x = self.layers[1](x)
         x = self.final_act(x)
         return x
 
@@ -1510,8 +1560,9 @@ class MLP_with_CNN3D_trans(torch.nn.Module):
         self.out_after_mlp = out_after_mlp
 
     def forward(self, x, *args, **kwargs):
+        bs = x.shape[0]
         x = self.layers[0](x)
-        x = torch.reshape(x, (self.out_after_mlp, self.first_D0, self.first_D1, self.first_D2))
+        x = torch.reshape(x, (bs, self.out_after_mlp, self.first_D0, self.first_D1, self.first_D2))
         x = self.layers[1](x)
         x = self.layers[2](x)
         x = self.final_act(x)

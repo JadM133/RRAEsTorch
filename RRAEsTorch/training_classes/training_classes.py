@@ -13,7 +13,6 @@ import os
 import time
 import dill
 import shutil
-from RRAEsTorch.wrappers import vmap_wrap, norm_wrap
 from functools import partial
 from RRAEsTorch.trackers import (
     Null_Tracker,
@@ -25,6 +24,8 @@ import matplotlib.pyplot as plt
 from prettytable import PrettyTable
 import torch
 from torch.utils.data import TensorDataset, DataLoader
+
+from RRAEsTorch.utilities import get_basis
 
 class Circular_list:
     """
@@ -157,40 +158,17 @@ class Trainor_class:
         model_cls=None,
         folder="",
         file=None,
-        out_train=None,
-        norm_in="None",
-        norm_out="None",
-        methods_map=["__call__"],
-        methods_norm_in=["__call__"],
-        methods_norm_out=["__call__"],
-        call_map_count=1,
-        call_map_axis=-1,
         **kwargs,
     ):
         if model_cls is not None:
             orig_model_cls = model_cls
-            model_cls = vmap_wrap(orig_model_cls, call_map_axis, call_map_count, methods_map)
-            model_cls = norm_wrap(model_cls, in_train, norm_in, None, out_train, norm_out, None, methods_norm_in, methods_norm_out)
             self.model = model_cls(**kwargs)
-            params_in = self.model.params_in
-            params_out = self.model.params_out
         else:
             orig_model_cls = None
-            params_in = None
-            params_out = None
 
         self.all_kwargs = {
             "kwargs": kwargs,
-            "params_in": params_in,
-            "params_out": params_out,
-            "norm_in": norm_in,
-            "norm_out": norm_out,
-            "call_map_axis": call_map_axis,
-            "call_map_count": call_map_count,
-            "orig_model_cls": orig_model_cls,
-            "methods_map": methods_map,
-            "methods_norm_in": methods_norm_in,
-            "methods_norm_out": methods_norm_out,
+            "orig_model_cls": orig_model_cls
         }
 
         self.folder = folder
@@ -305,8 +283,8 @@ class Trainor_class:
         model = model.to(device)
 
         if input_val is not None:
-            dataset_val = TensorDataset(input_val.permute(*range(input_val.ndim - 1, -1, -1)), output_val.permute(*range(output_val.ndim - 1, -1, -1)), torch.arange(0, input_val.shape[-1], 1))
-            dataloader_val = DataLoader(dataset_val, batch_size=input_val.shape[-1], shuffle=False)
+            dataset_val = TensorDataset(input_val, output_val, torch.arange(0, input_val.shape[0], 1))
+            dataloader_val = DataLoader(dataset_val, batch_size=input_val.shape[0], shuffle=False)
 
         # Outler Loop
         for steps, lr, batch_size in zip(step_st, lr_st, batch_size_st):
@@ -316,15 +294,13 @@ class Trainor_class:
                     filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3
                 )
 
-                if (batch_size > input.shape[-1]) or batch_size == -1:
-                    print(f"Setting batch size to: {input.shape[-1]}")
-                    batch_size = input.shape[-1]
+                if (batch_size > input.shape[0]) or batch_size == -1:
+                    print(f"Setting batch size to: {input.shape[0]}")
+                    batch_size = input.shape[0]
 
                 # Inner loop (batch)
-                inputT = input.permute(*range(input.ndim - 1, -1, -1))
-                outputT = output.permute(*range(output.ndim - 1, -1, -1))
 
-                dataset = TensorDataset(inputT, outputT, torch.arange(0, input.shape[-1], 1))
+                dataset = TensorDataset(input, output, torch.arange(0, input.shape[0], 1))
                 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
                 data_iter = iter(dataloader)
 
@@ -337,11 +313,9 @@ class Trainor_class:
                         input_b, out_b, idx_b = next(data_iter)
     
                     start_time = time.perf_counter()             # Start time
-                    input_b = input_b.permute(*range(input_b.ndim - 1, -1, -1))
-                    out_b = self.model.norm_out.default(None, pre_func_out(out_b))    # Pre-process batch out values
-                    out_b = out_b.permute(*range(out_b.ndim - 1, -1, -1))
+                    out_b = pre_func_out(out_b)   # Pre-process batch out values
                     input_b = pre_func_inp(input_b)              # Pre-process batch input values 
-                    epsilon = eps_fn(latent_size, input_b.shape[-1])
+                    epsilon = eps_fn(latent_size, input_b.shape[0])
 
                     step_kwargs = merge_dicts(loss_kwargs, track_params)
 
@@ -362,10 +336,7 @@ class Trainor_class:
                     if input_val is not None:
                         val_loss = []
                         for input_vb, out_vb, idx_b in dataloader_val:
-                            input_vb = input_vb.permute(*range(input_vb.ndim - 1, -1, -1))
-                            out_vb = self.model.norm_out.default(None, pre_func_out(out_vb))    # Pre-process batch out values
-                            out_vb = out_vb.permute(*range(out_vb.ndim - 1, -1, -1))
-    
+                            out_vb = pre_func_out(out_vb) 
                             val_loss_batch = loss_fun(
                                 model, input_vb.to(device), out_vb.to(device), idx=idx_b, epsilon=None, **step_kwargs
                             )[0]
@@ -510,18 +481,16 @@ class Trainor_class:
                 hasattr(self, "batch_size") or batch_size is not None
             ), "You should either provide a batch_size or fit the model first."
 
-            x_train_oT = x_train_o.permute(*range(x_train_o.ndim - 1, -1, -1))
-            dataset = TensorDataset(x_train_oT)
+            dataset = TensorDataset(x_train_o)
             batch_size = self.batch_size if batch_size is None else batch_size
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
             
             pred = []
             for x_b in dataloader:
-                x_bT = x_b[0].permute(*range(x_b[0].ndim - 1, -1, -1))
-                pred_batch = call_func(x_bT)
+                pred_batch = call_func(x_b[0])
                 pred.append(pred_batch)
 
-            y_pred_train_o = torch.concatenate(pred, axis=-1)
+            y_pred_train_o = torch.concatenate(pred)
 
             self.error_train_o = (
                 torch.linalg.norm(y_pred_train_o - y_train_o)
@@ -530,8 +499,8 @@ class Trainor_class:
             )
             print("Train error on original output: ", self.error_train_o)
 
-            y_pred_train = self.model.norm_out.default(None, y_pred_train_o)
-            y_train = self.model.norm_out.default(None, y_train_o)
+            y_pred_train = pre_func_out(y_pred_train_o)
+            y_train = pre_func_out(y_train_o)
             self.error_train = (
                 torch.linalg.norm(y_pred_train - y_train) / torch.linalg.norm(y_train) * 100
             )
@@ -539,16 +508,14 @@ class Trainor_class:
 
         if x_test_o is not None:
             y_test_o = pre_func_out(y_test_o)
-            x_test_oT = x_test_o.permute(*range(x_test_o.ndim - 1, -1, -1))
-            dataset = TensorDataset(x_test_oT)
+            dataset = TensorDataset(x_test_o)
             batch_size = self.batch_size if batch_size is None else batch_size
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
             pred = []
             for x_b in dataloader:
-                x_bT = x_b[0].permute(*range(x_b[0].ndim - 1, -1, -1))
-                pred_batch = call_func(x_bT)
+                pred_batch = call_func(x_b[0])
                 pred.append(pred_batch)
-            y_pred_test_o = torch.concatenate(pred, axis=-1)
+            y_pred_test_o = torch.concatenate(pred)
             self.error_test_o = (
                 torch.linalg.norm(y_pred_test_o - y_test_o)
                 / torch.linalg.norm(y_test_o)
@@ -557,8 +524,8 @@ class Trainor_class:
             
             print("Test error on original output: ", self.error_test_o)
 
-            y_test = self.model.norm_out.default(None, y_test_o)
-            y_pred_test = self.model.norm_out.default(None, y_pred_test_o)
+            y_test = pre_func_out(y_test_o)
+            y_pred_test = pre_func_out(y_pred_test_o)
             self.error_test = (
                 torch.linalg.norm(y_pred_test - y_test) / torch.linalg.norm(y_test) * 100
             )
@@ -652,27 +619,10 @@ class Trainor_class:
             else:
                 orig_model_cls = orig_model_cls
             kwargs = self.all_kwargs["kwargs"]
-            self.call_map_axis = self.all_kwargs["call_map_axis"]
-            self.call_map_count = self.all_kwargs["call_map_count"]
-            self.params_in = self.all_kwargs["params_in"]
-            self.params_out = self.all_kwargs["params_out"]
-            self.norm_in = self.all_kwargs["norm_in"]
-            self.norm_out = self.all_kwargs["norm_out"]
-            try:
-                self.methods_map = self.all_kwargs["methods_map"]
-                self.methods_norm_in = self.all_kwargs["methods_norm_in"]
-                self.methods_norm_out = self.all_kwargs["methods_norm_out"]
-            except:
-                self.methods_map = ["encode", "decode"]
-                self.methods_norm_in = ["encode"]
-                self.methods_norm_out = ["decode"]
 
             kwargs.update(fn_kwargs)
-
-            model_cls = vmap_wrap(orig_model_cls, self.call_map_axis, self.call_map_count, self.methods_map)
-            model_cls = norm_wrap(model_cls, None, self.norm_in, self.params_in, None, self.norm_out, self.params_out, self.methods_norm_in, self.methods_norm_out)
             
-            model = model_cls(**kwargs)
+            model = orig_model_cls(**kwargs)
             model.load_state_dict(save_dict["model_state_dict"])
             self.model = model.to(device)
             attributes = save_dict["attr"]
@@ -685,7 +635,7 @@ class Trainor_class:
 
 class AE_Trainor_class(Trainor_class):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, methods_map=["encode", "decode"], methods_norm_in=["encode"], methods_norm_out=["decode"], **kwargs)
+        super().__init__(*args, **kwargs)
 
     def fit(self, *args, training_kwargs,  **kwargs):
         if "pre_func_inp" not in kwargs:
@@ -844,11 +794,11 @@ class RRAE_Trainor_class(AE_Trainor_class):
             self.batch_size = 16  # default value
 
         if ft_kwargs:
-            if "get_basis" in ft_kwargs:
-                get_basis = ft_kwargs["get_basis"]
-                ft_kwargs.pop("get_basis")
+            if "get_basis_bool" in ft_kwargs:
+                get_basis_bool = ft_kwargs["get_basis_bool"]
+                ft_kwargs.pop("get_basis_bool")
             else:
-                get_basis = True
+                get_basis_bool = True
             
             if "ft_end_type" in ft_kwargs:
                 ft_end_type = ft_kwargs["ft_end_type"]
@@ -865,8 +815,14 @@ class RRAE_Trainor_class(AE_Trainor_class):
 
             device = ft_kwargs.get("device", "cpu")
             
+            if "AE_func" in ft_kwargs:
+                AE_func = ft_kwargs["AE_func"]
+                ft_kwargs.pop("AE_func")
+            else:
+                AE_func = lambda m:m
+                
             ft_model, ft_track_params = self.fine_tune_basis(
-                None, args=args, kwargs=ft_kwargs, get_basis=get_basis, end_type=ft_end_type, basis_call_kwargs=basis_call_kwargs, device=device
+                None, args=args, kwargs=ft_kwargs, get_basis_bool=get_basis_bool, end_type=ft_end_type, basis_call_kwargs=basis_call_kwargs, device=device, AE_func=AE_func
             )  # fine tune basis
             self.ft_track_params = ft_track_params
         else:
@@ -874,7 +830,7 @@ class RRAE_Trainor_class(AE_Trainor_class):
             ft_track_params = {}
         return model, track_params, ft_model, ft_track_params
 
-    def fine_tune_basis(self, basis=None, get_basis=True, end_type="concat", basis_call_kwargs={}, device="cpu", *, args, kwargs):
+    def fine_tune_basis(self, basis=None, get_basis_bool=True, end_type="concat", basis_call_kwargs={}, device="cpu", AE_func=lambda m:m, *, args, kwargs):
 
         if "loss" in kwargs:
             norm_loss_ = kwargs["loss"]
@@ -885,45 +841,29 @@ class RRAE_Trainor_class(AE_Trainor_class):
             )
 
         if (basis is None):
-            with torch.no_grad():
-                if get_basis:
-                    inp = args[0] if len(args) > 0 else kwargs["input"]
+            inp = args[0] if len(args) > 0 else kwargs["input"]
 
-                    if "basis_batch_size" in kwargs:
-                        basis_batch_size = kwargs["basis_batch_size"]
-                        kwargs.pop("basis_batch_size")
-                    else:
-                        basis_batch_size = self.batch_size
+            if "basis_batch_size" in kwargs:
+                basis_batch_size = kwargs["basis_batch_size"]
+                kwargs.pop("basis_batch_size")
+            else:
+                basis_batch_size = self.batch_size
 
-                    basis_kwargs = basis_call_kwargs | self.track_params
-
-                    inpT = inp.permute(*range(inp.ndim - 1, -1, -1))
-                    dataset = TensorDataset(inpT)
-                    dataloader = DataLoader(dataset, batch_size=basis_batch_size, shuffle=False)
-                    model = self.model.to(device)
-
-                    all_bases = []
-                    
-                    for inp_b in dataloader:
-                        inp_bT = inp_b[0].permute(*range(inp_b[0].ndim - 1, -1, -1))
-                        all_bases.append(model.latent(
-                            self.pre_func_inp(inp_bT.to(device)), get_basis_coeffs=True, **basis_kwargs
-                        )[0].to("cpu")
-                        )
-                    if end_type == "concat":
-                        all_bases = torch.concatenate(all_bases, axis=1)
-                        basis = torch.linalg.svd(all_bases, full_matrices=False)[0]
-                        self.basis = basis[:, : self.track_params["k_max"]]
-                    else:
-                        self.basis = all_bases
-                else:
-                    bas = model.latent(self.pre_func_inp(inp[..., 0:1].to(device)), get_basis_coeffs=True, **self.track_params)[0].to("cpu")
-                    self.basis = torch.eye(bas.shape[0])
+            model = self.model.to(device)
+            k_max = self.track_params["k_max"]
+            if isinstance(AE_func, list):
+                bases = []
+                for func in AE_func:
+                    bases.append(get_basis(get_basis_bool, model, k_max, basis_batch_size, inp, end_type, device, basis_call_kwargs, self.pre_func_inp, func))
+                self.basis = bases
+            else:
+                self.basis = get_basis(get_basis_bool, model, k_max, basis_batch_size, inp, end_type, device, basis_call_kwargs, self.pre_func_inp, AE_func)
+            
         else:
             self.basis = basis
 
         def loss_fun(model, input, out, idx, epsilon, basis):
-            pred = model(input, epsilon=epsilon, apply_basis=basis, keep_normalized=True)
+            pred = model(input, epsilon=epsilon, apply_basis=basis)
             aux = {"loss": norm_loss_(pred, out)}
             return norm_loss_(pred, out), (aux, {})
 
@@ -935,7 +875,7 @@ class RRAE_Trainor_class(AE_Trainor_class):
 
         kwargs.setdefault("loss_kwargs", {}).update({"basis": self.basis})
         
-        fix_comp = lambda model: model._encode.parameters()
+        fix_comp = lambda model: AE_func(model)._encode.parameters()
         print("Fine tuning the basis ...")
         return super().fit(*args, fix_comp=fix_comp, training_kwargs=kwargs)
 

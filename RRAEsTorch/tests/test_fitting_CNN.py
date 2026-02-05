@@ -13,8 +13,8 @@ import torch
 @pytest.mark.parametrize(
     "model_cls, sh, lf",
     [
-        (Vanilla_AE_CNN, (1, 2, 2, 10), "default"),
-        (LoRAE_CNN, (6, 16, 16, 10), "nuc"),
+        (Vanilla_AE_CNN, (10, 1, 2, 2), "default"),
+        (LoRAE_CNN, (10, 6, 16, 16), "nuc"),
     ],
 )
 def test_AE_fitting(model_cls, sh, lf):
@@ -24,10 +24,10 @@ def test_AE_fitting(model_cls, sh, lf):
         x,
         model_cls,
         latent_size=100,
-        channels=x.shape[0],
-        width=x.shape[1],
-        height=x.shape[2],
-        samples=x.shape[-1],  # Only for weak
+        channels=x.shape[1],
+        width=x.shape[2],
+        height=x.shape[3],
+        samples=x.shape[0],  # Only for weak
         k_max=2,
     )
     kwargs = {
@@ -52,16 +52,16 @@ def test_AE_fitting(model_cls, sh, lf):
 def test_IRMAE_fitting():
     model_cls = IRMAE_CNN
     lf = "default"
-    sh = (3, 12, 12, 10)
+    sh = (10, 3, 12, 12)
     x = random.normal(size=sh)
     x = torch.tensor(x, dtype=torch.float32)
     trainor = AE_Trainor_class(
         x,
         model_cls,
         latent_size=100,
-        channels=x.shape[0],
-        width=x.shape[1],
-        height=x.shape[2],
+        channels=x.shape[1],
+        width=x.shape[2],
+        height=x.shape[3],
         k_max=2,
         linear_l=4,
     )
@@ -77,7 +77,7 @@ def test_IRMAE_fitting():
         assert False, f"Fitting failed with the following exception {repr(e)}"
 
 def test_RRAE_fitting():
-    sh = (1, 20, 20, 10)
+    sh = (10, 1, 20, 20)
     model_cls = RRAE_CNN
     x = random.normal(size=sh)
     x = torch.tensor(x, dtype=torch.float32)
@@ -85,9 +85,9 @@ def test_RRAE_fitting():
         x,
         model_cls,
         latent_size=100,
-        channels=x.shape[0],
-        width=x.shape[1],
-        height=x.shape[2],
+        channels=x.shape[1],
+        width=x.shape[2],
+        height=x.shape[3],
         k_max=2,
     )
     training_kwargs = {

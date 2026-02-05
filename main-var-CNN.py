@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
 
     print(
-        f"Shape of data is {x_train.shape} (C x H x W x Ntr) and {x_test.shape} (C x H x W x Nt)"
+        f"Shape of data is {x_train.shape} (Ntr x C x H x W) and {x_test.shape} (Nte, C x H x W)"
     )
 
 
@@ -44,9 +44,9 @@ if __name__ == "__main__":
 
     match method:
         case "VRRAE":
-            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(0, 1, size=(1, 1, k_max, bs)), dtype=torch.float32, device=device)
+            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(0, 1, size=(1, 1, bs, k_max)), dtype=torch.float32, device=device)
         case "VAE":
-            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(size=(1, 1, lat, bs)), dtype=torch.float32, device=device)
+            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(size=(1, 1, bs, lat)), dtype=torch.float32, device=device)
 
     # Step 3: Specify the archietectures' parameters:
     latent_size = 200  # latent space dimension
@@ -60,9 +60,9 @@ if __name__ == "__main__":
         x_train,
         model_cls,
         latent_size=latent_size,
-        height=x_train.shape[1],
-        width=x_train.shape[2],
-        channels=x_train.shape[0],
+        channels=x_train.shape[1],
+        height=x_train.shape[2],
+        width=x_train.shape[3],
         k_max=k_max,
         folder=f"{problem}/{method}_{problem}/",
         file=f"{method}_{problem}.pkl",

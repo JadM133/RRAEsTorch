@@ -5,6 +5,10 @@ __pycache__/
 
 # C extensions
 *.so
+*.mat
+utilities.py
+main_rugosity.py
+nomacro
 
 # Distribution / packaging
 .Python

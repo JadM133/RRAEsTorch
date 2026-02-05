@@ -21,13 +21,13 @@ if __name__ == "__main__":
         kwargs,
     ) = get_data(problem, train_size=10, test_size=1,)
     
-    x_train = torch.unsqueeze(x_train, 0)
-    x_test = torch.unsqueeze(x_test, 0)
-    y_train = torch.unsqueeze(y_train, 0)
-    y_test = torch.unsqueeze(y_test, 0)
+    x_train = torch.unsqueeze(x_train, 1)
+    x_test = torch.unsqueeze(x_test, 1)
+    y_train = torch.unsqueeze(y_train, 1)
+    y_test = torch.unsqueeze(y_test, 1)
 
     # C is channels, D0 is width, D1 is height, and Ntr is the number of training samples.
-    print(f"Shape of data is {x_train.shape} (C x T x Ntr).")
+    print(f"Shape of data is {x_train.shape} (Ntr x C x T).")
 
     # Step 2: Specify the model to use, Strong_RRAE_CNN is ours (recommended).
     method = "RRAE"
@@ -46,8 +46,8 @@ if __name__ == "__main__":
         x_train,
         model_cls,
         latent_size=latent_size,
-        channels=x_train.shape[0],
-        input_dim=x_train.shape[1],
+        channels=x_train.shape[1],
+        input_dim=x_train.shape[2],
         k_max=k_max,
         folder=f"{problem}",
         file=f"{method}_{problem}_test.pkl",

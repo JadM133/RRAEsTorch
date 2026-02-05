@@ -6,7 +6,6 @@ from RRAEsTorch.utilities import (
     MLP_with_CNN3D_trans,
     stable_SVD,
 )   
-from RRAEsTorch.wrappers import vmap_wrap
 import warnings
 from torch.nn import Linear
 from RRAEsTorch.AE_base import get_autoencoder_base
@@ -42,6 +41,8 @@ def latent_func_strong_RRAE(
     y_approx : jnp.array
         The latent space after the truncation.
     """
+    y = y.T # to get the number of samples in the last dimension, as expected by the SVD function
+
     if apply_basis is not None:
         if get_basis_coeffs:
             return apply_basis, apply_basis.T @ y
@@ -51,7 +52,7 @@ def latent_func_strong_RRAE(
             if get_right_sing:
                 raise ValueError("Can not find right singular vector when projecting on basis")
             return apply_basis.T @ y
-        return apply_basis @ apply_basis.T @ y
+        return (apply_basis @ apply_basis.T @ y).T
 
     k_max = -1 if k_max is None else k_max
 
@@ -97,7 +98,7 @@ def latent_func_strong_RRAE(
         sigs = None
     if ret:
         return u_now, coeffs, sigs
-    return y_approx
+    return y_approx.T
 
 def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=False, return_lat_dist=False, **kwargs):
     apply_basis = kwargs.get("apply_basis")
@@ -111,6 +112,9 @@ def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=F
         return latent_func_strong_RRAE(self, y, k_max, apply_basis=apply_basis, **kwargs)
 
     basis, coeffs = latent_func_strong_RRAE(self, y, k_max=k_max, get_basis_coeffs=True, apply_basis=apply_basis)
+    
+    coeffs = coeffs.T # to get the number of samples as first dim
+
     if self.typ == "eye":
         mean = coeffs
     elif self.typ == "trainable":
@@ -121,7 +125,7 @@ def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=F
     logvar = self.lin_logvar(coeffs)
 
     if return_dist:
-        return mean, logvar
+        return mean.T, logvar.T
 
     std = torch.exp(0.5 * logvar)
     if epsilon is not None:
@@ -132,8 +136,8 @@ def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=F
         z = mean
 
     if return_lat_dist:
-        return basis @ z, mean, logvar
-    return basis @ z
+        return z @ basis.T, mean.T, logvar.T
+    return z @ basis.T
 
 
 class RRAE_MLP(get_autoencoder_base()):
@@ -506,9 +510,8 @@ class VRRAE_CNN(CNN_Autoencoder):
             count=count,
             **kwargs,
         )
-        v_Linear = vmap_wrap(Linear, -1, count=count)
-        self.lin_mean = v_Linear(k_max, k_max)
-        self.lin_logvar = v_Linear(k_max, k_max)
+        self.lin_mean = Linear(k_max, k_max)
+        self.lin_logvar = Linear(k_max, k_max)
         self.typ = typ
 
     def _perform_in_latent(self, y, *args, k_max=None, epsilon=None, return_dist=False, return_lat_dist=False, **kwargs):
@@ -620,9 +623,8 @@ class VRRAE_CNN1D(CNN1D_Autoencoder):
             **kwargs,
         )
         
-        v_Linear = vmap_wrap(Linear, -1, count=count)
-        self.lin_mean = v_Linear(k_max, k_max,)
-        self.lin_logvar = v_Linear(k_max, k_max)
+        self.lin_mean = Linear(k_max, k_max,)
+        self.lin_logvar = Linear(k_max, k_max)
         self.typ = typ
         
 

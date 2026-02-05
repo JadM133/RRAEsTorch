@@ -26,13 +26,13 @@ if __name__ == "__main__":
         args,
     ) = get_data(problem, train_size=data_size, folder="../")
 
-    x_train = torch.unsqueeze(x_train, 0)
-    x_test = torch.unsqueeze(x_test, 0)
-    y_train = torch.unsqueeze(y_train, 0)
-    y_test = torch.unsqueeze(y_test, 0)
+    x_train = torch.unsqueeze(x_train, 1)
+    x_test = torch.unsqueeze(x_test, 1)
+    y_train = torch.unsqueeze(y_train, 1)
+    y_test = torch.unsqueeze(y_test, 1)
 
     print(
-        f"Shape of data is {x_train.shape} (C x T x Ntr) and {x_test.shape} (C x T x Nt)"
+        f"Shape of data is {x_train.shape} (Ntr x C x T) and {x_test.shape} (Nte x C x T)"
     )
 
 
@@ -46,9 +46,9 @@ if __name__ == "__main__":
 
     match method:
         case "VRRAE":
-            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(0, 1, size=(1, 1, k_max, bs)), dtype=torch.float32, device=device)
+            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(0, 1, size=(1, 1, bs, k_max)), dtype=torch.float32, device=device)
         case "VAE":
-            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(size=(1, 1, lat, bs)), dtype=torch.float32, device=device)
+            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(size=(1, 1, bs, lat)), dtype=torch.float32, device=device)
 
     # Step 3: Specify the archietectures' parameters:
     latent_size = 200  # latent space dimension
@@ -62,8 +62,8 @@ if __name__ == "__main__":
         x_train,
         model_cls,
         latent_size=latent_size,
-        input_dim=x_train.shape[1],
-        channels=x_train.shape[0],
+        input_dim=x_train.shape[2],
+        channels=x_train.shape[1],
         k_max=k_max,
         folder=f"{problem}/{method}_{problem}/",
         file=f"{method}_{problem}.pkl",

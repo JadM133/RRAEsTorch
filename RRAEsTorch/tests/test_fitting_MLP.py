@@ -14,8 +14,8 @@ import torch
 @pytest.mark.parametrize(
     "model_cls, sh, lf",
     [
-        (Vanilla_AE_MLP, (500, 10), "default"),
-        (LoRAE_MLP, (500, 10), "nuc"),
+        (Vanilla_AE_MLP, (10, 500), "default"),
+        (LoRAE_MLP, (10, 500), "nuc"),
     ],
 )
 def test_fitting(model_cls, sh, lf):
@@ -24,9 +24,8 @@ def test_fitting(model_cls, sh, lf):
     trainor = AE_Trainor_class(
         x,
         model_cls,
-        in_size=x.shape[0],
-        data_size=x.shape[-1],
-        samples=x.shape[-1],  # Only for weak
+        in_size=x.shape[1],
+        samples=x.shape[0],  # Only for weak
         norm_in="meanstd",
         norm_out="minmax",
         out_train=x,
@@ -51,14 +50,14 @@ def test_fitting(model_cls, sh, lf):
 
 
 def test_RRAE_fitting():
-    sh = (500, 10)
+    sh = (10, 500)
     model_cls = RRAE_MLP
     x = random.normal(size=sh)
     x = torch.tensor(x, dtype=torch.float32)
     trainor = RRAE_Trainor_class(
         x,
         model_cls,
-        in_size=x.shape[0],
+        in_size=x.shape[1],
         latent_size=2000,
         k_max=2,
     )
@@ -83,14 +82,13 @@ def test_RRAE_fitting():
 def test_IRMAE_fitting():
     model_cls = IRMAE_MLP
     lf = "default"
-    sh = (500, 10)
+    sh = (10, 500)
     x = random.normal(size=sh)
     x = torch.tensor(x, dtype=torch.float32)
     trainor = AE_Trainor_class(
         x,
         model_cls,
-        in_size=x.shape[0],
-        data_size=x.shape[-1],
+        in_size=x.shape[1],
         latent_size=2000,
         k_max=2,
         linear_l=4,
@@ -107,15 +105,15 @@ def test_IRMAE_fitting():
         assert False, f"Fitting failed with the following exception {repr(e)}"
 
 def test_fitting():
-    sh = (50, 100)
+    sh = (100, 50)
     model_cls = MLP
     x = random.normal(size=sh)
     x = torch.tensor(x, dtype=torch.float32)
     trainor = Trainor_class(
         x,
         model_cls,
-        in_channels=x.shape[0],
-        hidden_channels=[100, x.shape[0]]
+        in_channels=x.shape[1],
+        hidden_channels=[100, x.shape[1]]
     )
     training_kwargs = {
         "step_st": [2],

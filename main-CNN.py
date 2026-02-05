@@ -21,7 +21,7 @@ if __name__ == "__main__":
     ) = get_data(problem, train_size=100, test_size=1,)
 
     # C is channels, D0 is width, D1 is height, and Ntr is the number of training samples.
-    print(f"Shape of data is {x_train.shape} (C x D0 x D1 x Ntr).")
+    print(f"Shape of data is {x_train.shape} (Ntr x C x D0 x D1).")
 
     # Step 2: Specify the model to use, Strong_RRAE_CNN is ours (recommended).
     method = "RRAE"
@@ -40,15 +40,12 @@ if __name__ == "__main__":
         x_train,
         model_cls,
         latent_size=latent_size,
-        height=x_train.shape[1],
-        width=x_train.shape[2],
-        channels=x_train.shape[0],
+        channels=x_train.shape[1],
+        height=x_train.shape[2],
+        width=x_train.shape[3],
         k_max=k_max,
         folder=f"{problem}",
         file=f"{method}_{problem}_test.pkl",
-        norm_in="None",
-        norm_out="None",
-        out_train=x_train,
         kwargs_enc={
             "width_CNNs": [32, 64, 128],
             "kernel_conv": 3,

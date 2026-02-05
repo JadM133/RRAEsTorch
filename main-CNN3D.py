@@ -7,12 +7,12 @@ import torch
 
 if __name__ == "__main__":
 
-    data = random.uniform(low=0.0, high=1.0, size=(1, 20, 20, 20, 400))
-    x_train = data[..., :350]
-    y_train = data[..., :350]
+    data = random.uniform(low=0.0, high=1.0, size=(400, 1, 20, 20, 20))
+    x_train = data[:350]
+    y_train = data[:350]
     
-    x_test  = data[..., 350:]
-    y_test  = data[..., 350:]
+    x_test  = data[350:]
+    y_test  = data[350:]
 
     x_train = torch.tensor(x_train, dtype=torch.float32)
     y_train = torch.tensor(y_train, dtype=torch.float32)
@@ -20,7 +20,7 @@ if __name__ == "__main__":
     y_test  = torch.tensor(y_test, dtype=torch.float32)
 
     # C is channels, D0 is width, D1 is height, D2 depth and Ntr is the number of training samples.
-    print(f"Shape of data is {x_train.shape} (C x D0 x D1 x D2 x Ntr).")
+    print(f"Shape of data is {x_train.shape} (Ntr x C x D0 x D1 x D2).")
 
     # Step 2: Specify the model to use, Strong_RRAE_CNN is ours (recommended).
     method = "RRAE"
@@ -39,16 +39,11 @@ if __name__ == "__main__":
         x_train,
         model_cls,
         latent_size=latent_size,
-        depth  = x_train.shape[1],
-        height = x_train.shape[2],
-        width  = x_train.shape[3],
-        channels = x_train.shape[0],
+        channels = x_train.shape[1],
+        depth  = x_train.shape[2],
+        height = x_train.shape[3],
+        width  = x_train.shape[4],
         k_max=k_max,
-        #folder=f"{problem}",
-        #file=f"{method}_{problem}_test.pkl",
-        norm_in="None",
-        norm_out="None",
-        out_train=x_train,
         kwargs_enc={
             "width_CNNs": [32, 64, 128],
             "kernel_conv": 3,
