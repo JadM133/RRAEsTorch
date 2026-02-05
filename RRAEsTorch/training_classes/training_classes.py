@@ -229,7 +229,8 @@ class Trainor_class:
         save_losses=False,
         input_val=None,
         output_val=None,
-        latent_size=0
+        latent_size=0,
+        device="cpu"
     ):
         assert isinstance(input, torch.Tensor), "Input should be a torch tensor"
         assert isinstance(output, torch.Tensor), "Output should be a torch tensor"
@@ -301,7 +302,12 @@ class Trainor_class:
             all_losses = []
 
         
-        
+        model = model.to(device)
+
+        if input_val is not None:
+            dataset_val = TensorDataset(input_val.permute(*range(input_val.ndim - 1, -1, -1)), output_val.permute(*range(output_val.ndim - 1, -1, -1)), torch.arange(0, input_val.shape[-1], 1))
+            dataloader_val = DataLoader(dataset_val, batch_size=input_val.shape[-1], shuffle=False)
+
         # Outler Loop
         for steps, lr, batch_size in zip(step_st, lr_st, batch_size_st):
             try:
@@ -340,6 +346,9 @@ class Trainor_class:
                     step_kwargs = merge_dicts(loss_kwargs, track_params)
 
                     # Compute loss
+                    input_b = input_b.to(device)
+                    out_b = out_b.to(device)
+                    
                     loss, model, optimizer_tr, (aux, extra_track) = make_step(
                                                                 model,
                                                                 input_b,
@@ -351,12 +360,17 @@ class Trainor_class:
                                                             )
                     
                     if input_val is not None:
+                        val_loss = []
+                        for input_vb, out_vb, idx_b in dataloader_val:
+                            input_vb = input_vb.permute(*range(input_vb.ndim - 1, -1, -1))
+                            out_vb = self.model.norm_out.default(None, pre_func_out(out_vb))    # Pre-process batch out values
+                            out_vb = out_vb.permute(*range(out_vb.ndim - 1, -1, -1))
     
-
-                        idx = np.arange(input_val.shape[-1])
-                        val_loss, _ = loss_fun(
-                            model, input_val, output_val, idx=idx, epsilon=None, **step_kwargs
-                        )
+                            val_loss_batch = loss_fun(
+                                model, input_vb.to(device), out_vb.to(device), idx=idx_b, epsilon=None, **step_kwargs
+                            )[0]
+                            val_loss.append(val_loss_batch.item())
+                        val_loss = sum(val_loss) / len(val_loss)
                         aux["val_loss"] = val_loss
                     else:
                         aux["val_loss"] = None
@@ -618,7 +632,7 @@ class Trainor_class:
             dill.dump(obj, f)
         print(f"Object saved in {filename}")
 
-    def load_model(self, filename=None, erase=False, path=None, orig_model_cls=None, **fn_kwargs):
+    def load_model(self, filename=None, erase=False, path=None, orig_model_cls=None, device="cpu",**fn_kwargs):
         """NOTE: fn_kwargs defines the functions of the model
         (e.g. final_activation, inner activation), if
         needed to be saved/loaded on different devices/OS.
@@ -660,7 +674,7 @@ class Trainor_class:
             
             model = model_cls(**kwargs)
             model.load_state_dict(save_dict["model_state_dict"])
-            self.model = model
+            self.model = model.to(device)
             attributes = save_dict["attr"]
 
             for key in attributes:
@@ -849,8 +863,10 @@ class RRAE_Trainor_class(AE_Trainor_class):
                 ft_end_type = "concat"
                 basis_call_kwargs = {}
 
+            device = ft_kwargs.get("device", "cpu")
+            
             ft_model, ft_track_params = self.fine_tune_basis(
-                None, args=args, kwargs=ft_kwargs, get_basis=get_basis, end_type=ft_end_type, basis_call_kwargs=basis_call_kwargs
+                None, args=args, kwargs=ft_kwargs, get_basis=get_basis, end_type=ft_end_type, basis_call_kwargs=basis_call_kwargs, device=device
             )  # fine tune basis
             self.ft_track_params = ft_track_params
         else:
@@ -858,7 +874,7 @@ class RRAE_Trainor_class(AE_Trainor_class):
             ft_track_params = {}
         return model, track_params, ft_model, ft_track_params
 
-    def fine_tune_basis(self, basis=None, get_basis=True, end_type="concat", basis_call_kwargs={}, *, args, kwargs):
+    def fine_tune_basis(self, basis=None, get_basis=True, end_type="concat", basis_call_kwargs={}, device="cpu", *, args, kwargs):
 
         if "loss" in kwargs:
             norm_loss_ = kwargs["loss"]
@@ -884,24 +900,24 @@ class RRAE_Trainor_class(AE_Trainor_class):
                     inpT = inp.permute(*range(inp.ndim - 1, -1, -1))
                     dataset = TensorDataset(inpT)
                     dataloader = DataLoader(dataset, batch_size=basis_batch_size, shuffle=False)
+                    model = self.model.to(device)
 
                     all_bases = []
                     
                     for inp_b in dataloader:
                         inp_bT = inp_b[0].permute(*range(inp_b[0].ndim - 1, -1, -1))
-                        all_bases.append(self.model.latent(
-                            self.pre_func_inp(inp_bT), get_basis_coeffs=True, **basis_kwargs
-                        )[0]
+                        all_bases.append(model.latent(
+                            self.pre_func_inp(inp_bT.to(device)), get_basis_coeffs=True, **basis_kwargs
+                        )[0].to("cpu")
                         )
                     if end_type == "concat":
                         all_bases = torch.concatenate(all_bases, axis=1)
-                        print(all_bases.shape)
                         basis = torch.linalg.svd(all_bases, full_matrices=False)[0]
                         self.basis = basis[:, : self.track_params["k_max"]]
                     else:
                         self.basis = all_bases
                 else:
-                    bas = self.model.latent(self.pre_func_inp(inp[..., 0:1]), get_basis_coeffs=True, **self.track_params)[0]
+                    bas = model.latent(self.pre_func_inp(inp[..., 0:1].to(device)), get_basis_coeffs=True, **self.track_params)[0].to("cpu")
                     self.basis = torch.eye(bas.shape[0])
         else:
             self.basis = basis
@@ -932,10 +948,10 @@ class RRAE_Trainor_class(AE_Trainor_class):
         batch_size=None,
         pre_func_inp=lambda x: x,
         pre_func_out=lambda x: x,
-        call_func=None,
+        device="cpu",
     ):
 
-        call_func = lambda x: self.model(pre_func_inp(x), apply_basis=self.basis, epsilon=None)
+        call_func = lambda x: self.model(pre_func_inp(x.to(device)), apply_basis=self.basis.to(device), epsilon=None).to("cpu")
         res = super().evaluate(
             x_train_o,
             y_train_o,
@@ -945,6 +961,7 @@ class RRAE_Trainor_class(AE_Trainor_class):
             call_func=call_func,
             pre_func_inp=pre_func_inp,
             pre_func_out=pre_func_out,
+            device=device,
         )
         return res
 

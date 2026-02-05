@@ -7,7 +7,7 @@ from RRAEsTorch.AE_classes import RRAE_CNN
 from RRAEsTorch.training_classes import RRAE_Trainor_class
 from RRAEsTorch.trackers import RRAE_gen_Tracker, RRAE_fixed_Tracker, RRAE_pars_Tracker
 from RRAEsTorch.utilities import get_data
-
+import torch
 
 if __name__ == "__main__":
     # Step 1: Get the data - replace this with your own data of the same shape.
@@ -69,13 +69,16 @@ if __name__ == "__main__":
         },
     )
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     training_kwargs = {
         "step_st": [2,],  # increase for a very big value
         "batch_size_st": [64,],
         "lr_st": [1e-3, 1e-4, 1e-7, 1e-8],
         "print_every": 1,
         "loss_type": loss_type,
-        "tracker": RRAE_gen_Tracker(k_init=k_max, patience_init=50)
+        "tracker": RRAE_gen_Tracker(k_init=k_max, patience_init=50),
+        "device": device,
     }
 
     # The tracker above will specify the adaptive scheme to be used. Gen means generic and it
@@ -89,6 +92,7 @@ if __name__ == "__main__":
         "batch_size_st": [64],
         "lr_st": [1e-4, 1e-5, 1e-6, 1e-7, 1e-8],
         "print_every": 1,
+        "device": device,
     }
 
     trainor.fit(
@@ -101,7 +105,7 @@ if __name__ == "__main__":
     )
 
     preds = trainor.evaluate(
-        x_train, y_train, x_test, y_test, None, pre_func_inp, pre_func_out
+        x_train, y_train, x_test, y_test, None, pre_func_inp, pre_func_out, device
     )
 
     # Uncomment the following line if you want to hold the session to check your

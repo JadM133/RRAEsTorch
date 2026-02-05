@@ -3,6 +3,7 @@ import RRAEsTorch.config
 from RRAEsTorch.AE_classes import *
 from RRAEsTorch.training_classes import RRAE_Trainor_class
 import numpy.random as random
+import torch
 
 if __name__ == "__main__":
 
@@ -67,6 +68,8 @@ if __name__ == "__main__":
     # you need to specify training kw arguments (first stage of training with SVD to
     # find the basis), and fine-tuning kw arguments (second stage of training with the
     # basis found in the first stage).
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     training_kwargs = {
         "step_st": [2,],  # Increase those to train well
         "batch_size_st": [64, 64],
@@ -74,6 +77,7 @@ if __name__ == "__main__":
         "print_every": 1,
         # "save_every": 789,
         "loss_type": loss_type,
+        "device": device,
     }
 
     ft_kwargs = {
@@ -81,6 +85,7 @@ if __name__ == "__main__":
         "batch_size_st": [20],
         "lr_st": [1e-4, 1e-6, 1e-7, 1e-8],
         "print_every": 100,
+        "device": device,
         # "save_every": 50,
     }
 
@@ -93,7 +98,10 @@ if __name__ == "__main__":
         #pre_func_inp=pre_func_inp,
         #pre_func_out=pre_func_out,
     )
-        
+
+    preds = trainor.evaluate(
+        x_train, y_train, x_test, y_test, None, device=device
+    )    
     # NOTE: preds are not saved so uncomment last line if you want to save/plot etc.
 
     #trainor.save_model(kwargs=kwargs)

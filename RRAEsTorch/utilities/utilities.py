@@ -1510,7 +1510,6 @@ class MLP_with_CNN3D_trans(torch.nn.Module):
         self.out_after_mlp = out_after_mlp
 
     def forward(self, x, *args, **kwargs):
-        print(x.shape)
         x = self.layers[0](x)
         x = torch.reshape(x, (self.out_after_mlp, self.first_D0, self.first_D1, self.first_D2))
         x = self.layers[1](x)

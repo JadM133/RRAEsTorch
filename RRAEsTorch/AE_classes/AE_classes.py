@@ -127,7 +127,7 @@ def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=F
     if epsilon is not None:
         if len(epsilon.shape) == 4:
             epsilon = epsilon[0, 0] # to allow tpu sharding
-        z = mean + torch.tensor(epsilon, dtype=torch.float32) * std
+        z = mean + epsilon * std
     else:
         z = mean
 
@@ -612,10 +612,6 @@ class VRRAE_CNN1D(CNN1D_Autoencoder):
     typ: int
 
     def __init__(self, channels, input_dim, latent_size, k_max, typ="eye", *, count=1, **kwargs):
-        v_Linear = vmap_wrap(Linear, -1, count=count)
-        self.lin_mean = v_Linear(k_max, k_max,)
-        self.lin_logvar = v_Linear(k_max, k_max)
-        self.typ = typ
         super().__init__(
             channels,
             input_dim,
@@ -623,6 +619,12 @@ class VRRAE_CNN1D(CNN1D_Autoencoder):
             count=count,
             **kwargs,
         )
+        
+        v_Linear = vmap_wrap(Linear, -1, count=count)
+        self.lin_mean = v_Linear(k_max, k_max,)
+        self.lin_logvar = v_Linear(k_max, k_max)
+        self.typ = typ
+        
 
     def _perform_in_latent(self, y, *args, k_max=None, epsilon=None, return_dist=False, return_lat_dist=False, **kwargs):
         return latent_func_var_strong_RRAE(self, y, k_max, epsilon, return_dist, return_lat_dist, **kwargs)

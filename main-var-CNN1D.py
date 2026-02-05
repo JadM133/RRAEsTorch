@@ -4,6 +4,7 @@ from RRAEsTorch.AE_classes import *
 from RRAEsTorch.training_classes import RRAE_Trainor_class, Trainor_class  # , Trainor_class
 from RRAEsTorch.utilities import get_data
 import numpy as np
+import torch
 
 
 if __name__ == "__main__":
@@ -45,9 +46,9 @@ if __name__ == "__main__":
 
     match method:
         case "VRRAE":
-            eps_fn = lambda lat, bs: np.random.normal(0, 1, size=(1, 1, k_max, bs))
+            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(0, 1, size=(1, 1, k_max, bs)), dtype=torch.float32, device=device)
         case "VAE":
-            eps_fn = lambda lat, bs: np.random.normal(size=(1, 1, lat, bs))
+            eps_fn = lambda lat, bs: torch.tensor(np.random.normal(size=(1, 1, lat, bs)), dtype=torch.float32, device=device)
 
     # Step 3: Specify the archietectures' parameters:
     latent_size = 200  # latent space dimension
@@ -88,6 +89,8 @@ if __name__ == "__main__":
     # you need to specify training kw arguments (first stage of training with SVD to
     # find the basis), and fine-tuning kw arguments (second stage of training with the
     # basis found in the first stage).
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     training_kwargs = {
         "step_st": [2],  # 7680*data_size/64
         "batch_size_st": [64],
@@ -96,6 +99,7 @@ if __name__ == "__main__":
         "loss_type": loss_type,
         "loss_kwargs": {"beta": 0.001},
         "eps_fn": eps_fn,
+        "device": device,
     }
 
 
@@ -104,7 +108,8 @@ if __name__ == "__main__":
         "batch_size_st": [64],
         "lr_st": [1e-4, 1e-6, 1e-7, 1e-8],
         "print_every": 1,
-        "eps_fn": eps_fn
+        "eps_fn": eps_fn,
+        "device": device
     }
 
 
@@ -124,7 +129,7 @@ if __name__ == "__main__":
     trainor.save_model()
 
     preds = trainor.evaluate(
-        x_train, y_train, x_test, y_test, None, pre_func_inp, pre_func_out
+        x_train, y_train, x_test, y_test, None, pre_func_inp, pre_func_out, device
     )
             
     # pdb.set_trace()
