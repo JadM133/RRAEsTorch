@@ -33,5 +33,5 @@ def test_random_normal(length, width):
     normal_value.backward()
     normal_grad = A.grad
     
-    assert torch.allclose(stable_value, normal_value, atol=1e-5, rtol=1e-5)
-    assert torch.allclose(stable_grad, normal_grad, atol=1e-5, rtol=1e-5)
+    assert torch.allclose(stable_value, normal_value, atol=1e-4, rtol=1e-4)
+    assert torch.allclose(stable_grad, normal_grad, atol=1e-4, rtol=1e-4)

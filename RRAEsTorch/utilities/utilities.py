@@ -764,46 +764,53 @@ class StableSVD(torch.autograd.Function):
         """
         U, S, Vh = ctx.saved_tensors
         m, n = ctx.original_shape[-2:]
-        dtype = U.dtype
 
-        # Helpers
+        dtype = U.dtype
+        device = U.device
+
         H = lambda x: x.transpose(-2, -1).conj()
         T = lambda x: x.transpose(-2, -1)
 
-        S_mat = S.unsqueeze(-2)
-        S_diff = S_mat - S_mat.transpose(-2, -1)
-        eye = torch.eye(S.size(-1), device=S.device, dtype=dtype)
-
-        # Avoid division by zero
-        F = torch.where(S_diff.abs() > 1e-9, 1.0 / (S_diff), torch.zeros_like(S_diff))
-
-        # Diagonal matrix helpers
+        # Diagonal helpers
         def diag_embed(x):
             return torch.diag_embed(x)
 
-        # Gradients contribution from S
+        # Singular value vector to diagonal for broadcasting
+        S_mat = S.unsqueeze(-2)
+        S_diff = S_mat - S_mat.transpose(-2, -1)
+
+        # F matrix for repeated singular values
+        eps = 1e-20
+        F = torch.where(S_diff.abs() > eps, 1.0 / S_diff, torch.zeros_like(S_diff))
+
+        # Gradient from singular values
         dA = U @ diag_embed(dS) @ Vh
 
         # Contributions from U
         Ut_dU = H(U) @ dU
-        dU_term = F * (Ut_dU - Ut_dU.transpose(-2, -1))
-        dA += U @ dU_term @ diag_embed(S) @ Vh
+        skew_U = F * (Ut_dU - Ut_dU.transpose(-2, -1))
+        dA += U @ skew_U @ diag_embed(S) @ Vh
 
         # Contributions from V
-        V = H(Vh)
-        Vt_dV = H(V) @ H(dVh)
-        dV_term = F * (Vt_dV - Vt_dV.transpose(-2, -1))
-        dA += U @ diag_embed(S) @ dV_term @ Vh
+        V = H(Vh)  # n x k
+        Vt_dV = H(V) @ H(dVh)  # k x k
+        skew_V = F * (Vt_dV - Vt_dV.transpose(-2, -1))
+        dA += U @ diag_embed(S) @ skew_V @ Vh
 
-        # Rectangular adjustment
+        # Rectangular adjustments (like JAX)
+        # s_inv = 1 / S with stable zero handling
+        s_zeros = (S == 0).to(dtype)
+        s_inv = 1.0 / (S + s_zeros) - s_zeros  # shape: (k,)
+
         if m > n:
-            dAV = dU @ V
-            s_inv = 1.0 / S
-            dA += (dAV - U @ (H(U) @ dAV)) @ diag_embed(s_inv)
+            dAV = dA @ V
+            dA += (dAV - U @ (H(U) @ dAV)) * s_inv
         elif n > m:
-            dAHU = H(dVh) @ U
-            s_inv = 1.0 / S
-            dA += H(dAHU - V @ (Vh @ dAHU)) @ diag_embed(s_inv)
+            dAHU = H(dA) @ U
+            print("first term shape: ", H(dAHU - V @ (Vh @ dAHU)).shape)
+            print("s_inv shape: ", s_inv.shape)
+
+            dA += H(dAHU - V @ (Vh @ dAHU)) * s_inv.unsqueeze(1)
 
         return dA
 
@@ -812,7 +819,8 @@ def get_basis(get_basis, model=None, k_max=None, batch_size=None, inp=None, end_
         if get_basis:
 
             dataset = TensorDataset(inp)
-            dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            drop_last = batch_size < inp.shape[0]
+            dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=drop_last)
 
             all_bases = []
             
