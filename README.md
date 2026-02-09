@@ -2,6 +2,8 @@
 
 A library that offers same functions as RRAEs (originally in JAX) but in PyTorch.
 
+MAIN DIFFERENCE: the number of samples (or batch) is the first dimension here (as usual in Torch) as opposed to the last dimension is the JAX version.
+
 The RAEDME is copied from RRAEs in the following:
 
 # Welcome
