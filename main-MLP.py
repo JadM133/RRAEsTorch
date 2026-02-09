@@ -32,7 +32,7 @@ if __name__ == "__main__":
 
     # Step 3: Specify the archietectures' parameters:
     latent_size = 200  # latent space dimension
-    k_max = 10  # number of features in the latent space (after the truncated SVD).
+    k_max = 2  # number of features in the latent space (after the truncated SVD).
 
     # Step 4: Define your trainor, with the model, data, and parameters.
     # Use RRAE_Trainor_class for the Strong RRAEs, and Trainor_class for other architetures.
@@ -110,4 +110,3 @@ if __name__ == "__main__":
 
     # Uncomment the following line if you want to hold the session to check your
     # results in the console.
-    # pdb.set_trace()

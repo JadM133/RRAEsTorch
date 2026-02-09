@@ -233,7 +233,7 @@ class Trainor_class:
 
         self.all_kwargs = merge_dicts(self.all_kwargs, training_params)  # Append dicts
 
-        model = self.model  # Create alias for model
+        model = self.model # .double()  # Create alias for model
 
         fn = lambda x: x if fn is None else fn
 
@@ -263,7 +263,7 @@ class Trainor_class:
         # Loop variables
         t_all = 0.0  # Total time
         avg_loss = np.inf
-        training_num = random.randint(0, 1000, (1,))[0]
+
 
         # Window to store averages
         store_window = min(stagn_window, sum(step_st))
@@ -284,7 +284,7 @@ class Trainor_class:
 
         if input_val is not None:
             dataset_val = TensorDataset(input_val, output_val, torch.arange(0, input_val.shape[0], 1))
-            dataloader_val = DataLoader(dataset_val, batch_size=input_val.shape[0], shuffle=False)
+            dataloader_val = DataLoader(dataset_val, batch_size=input_val.shape[0], shuffle=True, drop_last=True)
 
         # Outler Loop
         for steps, lr, batch_size in zip(step_st, lr_st, batch_size_st):
@@ -301,7 +301,7 @@ class Trainor_class:
                 # Inner loop (batch)
 
                 dataset = TensorDataset(input, output, torch.arange(0, input.shape[0], 1))
-                dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+                dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
                 data_iter = iter(dataloader)
 
                 for step in range(steps):
@@ -309,7 +309,7 @@ class Trainor_class:
                         input_b, out_b, idx_b = next(data_iter)
                     except StopIteration:
                         # reached the end, recreate iterator (reshuffle)
-                        data_iter = iter(DataLoader(dataset, batch_size=batch_size, shuffle=True))
+                        data_iter = iter(DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True))
                         input_b, out_b, idx_b = next(data_iter)
     
                     start_time = time.perf_counter()             # Start time
@@ -334,15 +334,18 @@ class Trainor_class:
                                                             )
                     
                     if input_val is not None:
-                        val_loss = []
-                        for input_vb, out_vb, idx_b in dataloader_val:
-                            out_vb = pre_func_out(out_vb) 
-                            val_loss_batch = loss_fun(
-                                model, input_vb.to(device), out_vb.to(device), idx=idx_b, epsilon=None, **step_kwargs
-                            )[0]
-                            val_loss.append(val_loss_batch.item())
-                        val_loss = sum(val_loss) / len(val_loss)
-                        aux["val_loss"] = val_loss
+                        model.eval()
+                        with torch.no_grad():
+                            val_loss = []
+                            for input_vb, out_vb, idx_b in dataloader_val:
+                                out_vb = pre_func_out(out_vb) 
+                                val_loss_batch = loss_fun(
+                                    model, input_vb.to(device), out_vb.to(device), idx=idx_b, epsilon=None, **step_kwargs
+                                )[0]
+                                val_loss.append(val_loss_batch.item())
+                            val_loss = sum(val_loss) / len(val_loss)
+                            aux["val_loss"] = val_loss
+                        model.train()
                     else:
                         aux["val_loss"] = None
 
@@ -848,6 +851,8 @@ class RRAE_Trainor_class(AE_Trainor_class):
                 kwargs.pop("basis_batch_size")
             else:
                 basis_batch_size = self.batch_size
+
+            basis_call_kwargs = basis_call_kwargs | self.track_params
 
             model = self.model.to(device)
             k_max = self.track_params["k_max"]

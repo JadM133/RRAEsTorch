@@ -747,59 +747,72 @@ def stable_SVD(A):
 class StableSVD(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        """
-        A: input matrix (..., m, n)
-        noise_std: std of noise to inject into singular values
-        eps: numerical stability constant
-        """
+        # Just compute standard SVD
         U, S, Vh = torch.linalg.svd(A, full_matrices=False)
 
+        # Save for backward
         ctx.save_for_backward(U, S, Vh)
+        ctx.original_shape = A.shape
 
         return U, S, Vh
 
     @staticmethod
     def backward(ctx, dU, dS, dVh):
+        """
+        Backward pass for stable SVD.
+        Computes gradient w.r.t. input A given gradients on U, S, Vh.
+        """
         U, S, Vh = ctx.saved_tensors
+        m, n = ctx.original_shape[-2:]
+        dtype = U.dtype
 
-        scale = S[..., :1]
-        mask = (S / scale * 100 >= 1e-6)
-        S_stable = S * mask
+        # Helpers
+        H = lambda x: x.transpose(-2, -1).conj()
+        T = lambda x: x.transpose(-2, -1)
 
-        k = S.shape[-1]
+        S_mat = S.unsqueeze(-2)
+        S_diff = S_mat - S_mat.transpose(-2, -1)
+        eye = torch.eye(S.size(-1), device=S.device, dtype=dtype)
 
-        V = Vh.transpose(-2, -1)
-        dV = dVh.transpose(-2, -1)
+        # Avoid division by zero
+        F = torch.where(S_diff.abs() > 1e-9, 1.0 / (S_diff), torch.zeros_like(S_diff))
 
-        S_i = S_stable.unsqueeze(-1)
-        S_j = S_stable.unsqueeze(-2)
+        # Diagonal matrix helpers
+        def diag_embed(x):
+            return torch.diag_embed(x)
 
-        diff = S_i**2 - S_j**2
-        zero = diff == 0
-        F = torch.zeros_like(diff)
-        F[~zero] = 1.0 / diff[~zero]
+        # Gradients contribution from S
+        dA = U @ diag_embed(dS) @ Vh
 
-        Ut_dU = U.transpose(-2, -1) @ dU
-        Vt_dV = V.transpose(-2, -1) @ dV
+        # Contributions from U
+        Ut_dU = H(U) @ dU
+        dU_term = F * (Ut_dU - Ut_dU.transpose(-2, -1))
+        dA += U @ dU_term @ diag_embed(S) @ Vh
 
-        K_U = F * (Ut_dU - Ut_dU.transpose(-2, -1))
-        K_V = F * (Vt_dV - Vt_dV.transpose(-2, -1))
+        # Contributions from V
+        V = H(Vh)
+        Vt_dV = H(V) @ H(dVh)
+        dV_term = F * (Vt_dV - Vt_dV.transpose(-2, -1))
+        dA += U @ diag_embed(S) @ dV_term @ Vh
 
-        K = torch.diag_embed(dS)
-        K = K + K_U @ torch.diag_embed(S)
-        K = K + torch.diag_embed(S) @ K_V
+        # Rectangular adjustment
+        if m > n:
+            dAV = dU @ V
+            s_inv = 1.0 / S
+            dA += (dAV - U @ (H(U) @ dAV)) @ diag_embed(s_inv)
+        elif n > m:
+            dAHU = H(dVh) @ U
+            s_inv = 1.0 / S
+            dA += H(dAHU - V @ (Vh @ dAHU)) @ diag_embed(s_inv)
 
-        dA = U @ K @ Vh
-
-        return dA, None, None
+        return dA
 
 def get_basis(get_basis, model=None, k_max=None, batch_size=None, inp=None, end_type="concat", device="cpu", basis_kwargs={}, pre_func_inp=lambda x:x, AE_func=lambda m:m):
-    
     with torch.no_grad():
         if get_basis:
 
             dataset = TensorDataset(inp)
-            dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+            dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
             all_bases = []
             
