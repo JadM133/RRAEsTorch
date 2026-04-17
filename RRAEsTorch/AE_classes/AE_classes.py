@@ -128,8 +128,6 @@ def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=F
 
     basis, coeffs = latent_func_strong_RRAE(self, y, k_max=k_max, get_basis_coeffs=True, apply_basis=apply_basis)
     
-    coeffs = coeffs.T # to get the number of samples as first dim
-
     if self.typ == "eye":
         mean = coeffs
     elif self.typ == "trainable":
