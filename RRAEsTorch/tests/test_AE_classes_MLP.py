@@ -61,5 +61,5 @@ def test_getting_SVD_coeffs():
     model_s = RRAE_MLP(data.shape[1], 200, 3)
     basis, coeffs = model_s.latent(data, k_max=3, get_basis_coeffs=True)
     assert basis.shape == (200, 3)
-    assert coeffs.shape == (3, 15)
+    assert coeffs.shape == (15, 3)
 
