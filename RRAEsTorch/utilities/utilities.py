@@ -113,7 +113,7 @@ def loss_generator(which=None, norm_loss_=None):
         
     elif which == "RRAE":
         def loss_fun(model, input, out, *, k_max, **kwargs):
-            pred = model(input, k_max=k_max)
+            pred = model(input, k_max=k_max, apply_basis=False)
             aux = {"loss": norm_loss_(pred, out), "k_max": k_max}
             return norm_loss_(pred, out), (aux, {})
     
@@ -163,7 +163,7 @@ def loss_generator(which=None, norm_loss_=None):
         norm_loss_ = lambda pr, out: torch.linalg.norm(pr-out)/torch.linalg.norm(out)*100
 
         def loss_fun(model, input, out, idx, epsilon, k_max, beta=None, **kwargs):
-            lat, means, logvars = model.latent(input, epsilon=epsilon, k_max=k_max, return_lat_dist=True)
+            lat, means, logvars = model.latent(input, epsilon=epsilon, k_max=k_max, return_lat_dist=True, apply_basis=False)
             pred = model.decode(lat)
             kl_loss = torch.sum(
                 -0.5 * (1 + logvars - torch.square(means) - torch.exp(logvars))

@@ -1,7 +1,7 @@
 """ Example script to train an RRAE with MLP encoder/decoder on curves (1D). """
 import RRAEsTorch.config # Include this in all your scripts
 from RRAEsTorch.AE_classes import *
-from RRAEsTorch.training_classes import RRAE_Trainor_class  # , Trainor_class
+from RRAEsTorch.training_classes import RRAE_Trainor_class, Trainor_class
 from RRAEsTorch.utilities import get_data
 import torch
 
@@ -24,19 +24,19 @@ if __name__ == "__main__":
     print(f"Shape of data is {x_train.shape} (Ntr x T) and {x_test.shape} (Nte x T)")
 
     # Step 2: Specify the model to use, Strong_RRAE_MLP is ours (recommended).
-    method = "RRAE"
+    method = "AE"
 
-    model_cls = RRAE_MLP
+    model_cls = Vanilla_AE_MLP
 
-    loss_type = "RRAE"  # Specify the loss type, according to the model chosen.
+    loss_type = "default"  # Specify the loss type, according to the model chosen.
 
     # Step 3: Specify the archietectures' parameters:
-    latent_size = 200  # latent space dimension
+    latent_size = 1  # latent space dimension
     k_max = 1  # number of features in the latent space (after the truncated SVD).
 
     # Step 4: Define your trainor, with the model, data, and parameters.
     # Use RRAE_Trainor_class for the Strong RRAEs, and Trainor_class for other architetures.
-    trainor = RRAE_Trainor_class(
+    trainor = Trainor_class(
         x_train,
         model_cls,
         latent_size=latent_size,
@@ -88,10 +88,9 @@ if __name__ == "__main__":
         y_train,
         input_val=x_train, # put your validation set here if you have one, otherwise None
         output_val=y_train, # put your validation set here if you have one, otherwise None
-        training_kwargs=training_kwargs,
-        ft_kwargs=ft_kwargs,
         pre_func_inp=pre_func_inp,
         pre_func_out=pre_func_out,
+        **training_kwargs,
     )
 
     # NOTE: the code does not overwrite the loss files, it gives every new file
@@ -99,7 +98,6 @@ if __name__ == "__main__":
     # multiple times without deleting the loss file, consider changing idx
     # below to specify the file of which training you want to plot
     # trainor.plot_training_losses(idx=0) # to plot both training and validation losses
-
 
     preds = trainor.evaluate(
         x_train, y_train, x_test, y_test, None, pre_func_inp, pre_func_out, device

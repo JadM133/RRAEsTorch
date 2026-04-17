@@ -91,5 +91,16 @@ class Autoencoder(torch.nn.Module):
 
     def latent(self, x, *args, **kwargs):
         return self.perform_in_latent(self.encode(x), *args, **kwargs)
+    
+    def get_coeffs(self, x, *args, **kwargs):
+        return self.latent(x, *args, get_coeffs=True, **kwargs)
+    
+    def decode_coeffs(self, coeffs, *args, **kwargs):
+        try:
+            if self.basis is not None:
+                coeffs = (self.basis @ coeffs.T).T
+        except AttributeError:
+            pass
+        return self.decode(coeffs, *args, **kwargs)
 
 rraes.set_autoencoder_base(Autoencoder)

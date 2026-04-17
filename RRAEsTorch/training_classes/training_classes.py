@@ -455,6 +455,7 @@ class Trainor_class:
         batch_size=None,
         pre_func_inp=lambda x: x,
         pre_func_out=lambda x: x,
+        device="cpu",
         call_func=None,
         **kwargs,
     ):
@@ -867,8 +868,10 @@ class RRAE_Trainor_class(AE_Trainor_class):
         else:
             self.basis = basis
 
+        self.model.basis = self.basis.to(device)
+
         def loss_fun(model, input, out, idx, epsilon, basis):
-            pred = model(input, epsilon=epsilon, apply_basis=basis)
+            pred = model(input, epsilon=epsilon, apply_basis=True)
             aux = {"loss": norm_loss_(pred, out)}
             return norm_loss_(pred, out), (aux, {})
 
@@ -896,7 +899,7 @@ class RRAE_Trainor_class(AE_Trainor_class):
         device="cpu",
     ):
 
-        call_func = lambda x: self.model(pre_func_inp(x.to(device)), apply_basis=self.basis.to(device), epsilon=None).to("cpu")
+        call_func = lambda x: self.model(pre_func_inp(x.to(device)), apply_basis=True, epsilon=None, basis_device=device).to("cpu")
         res = super().evaluate(
             x_train_o,
             y_train_o,
@@ -922,7 +925,7 @@ class RRAE_Trainor_class(AE_Trainor_class):
         norm_out_func=None,
     ):
         call_func = lambda x: (
-            self.model.latent(x, apply_basis=self.basis)
+            self.model.latent(x, apply_basis=True)
             if latent_func is None
             else latent_func
         )

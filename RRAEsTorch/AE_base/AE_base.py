@@ -20,6 +20,7 @@ def _default_autoencoder():
         norm_funcs: list
         inv_norm_funcs: list
         count: int
+        basis: None
 
         def __init__(
             self,
@@ -77,6 +78,7 @@ def _default_autoencoder():
             self.map_latent = map_latent
             self.inv_norm_funcs = ["decode"]
             self.norm_funcs = ["encode", "latent"]
+            self.basis = None
 
         def encode(self, x, *args, **kwargs):
             return self._encode(x, *args, **kwargs)
@@ -99,5 +101,14 @@ def _default_autoencoder():
 
         def latent(self, x, *args, **kwargs):
             return self.perform_in_latent(self.encode(x), *args, **kwargs)
+        
+        def get_coeffs(self, x, *args, **kwargs):
+            return self._perform_in_latent(x, *args, get_coeffs=True, **kwargs)
+        
+        def decode_coeffs(self, coeffs, *args, **kwargs):
+            if self.basis is not None:
+                import pdb; pdb.set_trace()
+                coeffs = self.basis @ coeffs
+            return self.decode(coeffs, *args, **kwargs)
 
     return Autoencoder

@@ -18,11 +18,12 @@ def latent_func_strong_RRAE(
     self,
     y,
     k_max=None,
-    apply_basis=None,
+    apply_basis=True,
     get_basis_coeffs=False,
     get_coeffs=False,
     get_right_sing=False,
     ret=False,
+    basis_device=None,
     *args,
     **kwargs,
 ):
@@ -41,17 +42,31 @@ def latent_func_strong_RRAE(
     y_approx : jnp.array
         The latent space after the truncation.
     """
+    
+    if apply_basis:
+        try:
+            if self.basis is not None:
+                apply_basis = self.basis
+                if basis_device is not None:
+                    apply_basis = apply_basis.to(basis_device)
+            else:
+                apply_basis = None
+        except AttributeError:
+            apply_basis = None
+    else:
+        apply_basis = None
+
     y = y.T # to get the number of samples in the last dimension, as expected by the SVD function
 
     if apply_basis is not None:
         if get_basis_coeffs:
-            return apply_basis, apply_basis.T @ y
+            return apply_basis, (apply_basis.T @ y).T
         if get_coeffs:
             if get_right_sing:
                 raise ValueError("Can not find right singular vector when projecting on basis")
             if get_right_sing:
                 raise ValueError("Can not find right singular vector when projecting on basis")
-            return apply_basis.T @ y
+            return (apply_basis.T @ y).T
         return (apply_basis @ apply_basis.T @ y).T
 
     k_max = -1 if k_max is None else k_max
@@ -71,11 +86,11 @@ def latent_func_strong_RRAE(
 
         if get_coeffs:
             if get_right_sing:
-                return v[:k_max, :]
+                return v[:k_max, :].T
             if get_right_sing:
-                return v[:k_max, :]
-            return coeffs
-        return u_now, coeffs
+                return v[:k_max, :].T
+            return coeffs.T
+        return u_now, coeffs.T
 
     if k_max != -1:
         u, s, v = stable_SVD(y)
@@ -97,7 +112,7 @@ def latent_func_strong_RRAE(
         coeffs = None
         sigs = None
     if ret:
-        return u_now, coeffs, sigs
+        return u_now, coeffs.T, sigs
     return y_approx.T
 
 def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=False, return_lat_dist=False, **kwargs):
