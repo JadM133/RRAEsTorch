@@ -65,7 +65,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     training_kwargs = {
-        "step_st": [2000],  # Increase this to train well (e.g. 2000)
+        "step_st": [2],  # Increase this to train well (e.g. 2000)
         "batch_size_st": [64, 64, 64, 64, 64],
         "lr_st": [1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8],
         "print_every": 1,
@@ -110,7 +110,4 @@ if __name__ == "__main__":
     
     # Uncomment the following line if you want to hold the session to check your
     # results in the console.
-    alphas = trainor.model.get_coeffs(x_train)
-    x_pred = trainor.model.decode_coeffs(alphas)
-
-    import pdb; pdb.set_trace()  # to check the results in the console
+    # import pdb; pdb.set_trace()  # to check the results in the console
