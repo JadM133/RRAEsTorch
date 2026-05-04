@@ -861,14 +861,13 @@ class RRAE_Trainor_class(AE_Trainor_class):
                 bases = []
                 for func in AE_func:
                     bases.append(get_basis(get_basis_bool, model, k_max, basis_batch_size, inp, end_type, device, basis_call_kwargs, self.pre_func_inp, func))
+                    func(model).basis = bases[-1].to(device)
                 self.basis = bases
             else:
                 self.basis = get_basis(get_basis_bool, model, k_max, basis_batch_size, inp, end_type, device, basis_call_kwargs, self.pre_func_inp, AE_func)
-            
+                AE_func(model).basis = self.basis.to(device)
         else:
             self.basis = basis
-
-        self.model.basis = self.basis.to(device)
 
         def loss_fun(model, input, out, idx, epsilon, basis):
             pred = model(input, epsilon=epsilon, apply_basis=True)
