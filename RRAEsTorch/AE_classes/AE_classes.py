@@ -43,7 +43,7 @@ def latent_func_strong_RRAE(
         The latent space after the truncation.
     """
     
-    if apply_basis:
+    if isinstance(apply_basis, torch.Tensor) or apply_basis:
         try:
             if self.basis is not None:
                 apply_basis = self.basis
