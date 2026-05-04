@@ -115,11 +115,21 @@ def latent_func_strong_RRAE(
         return u_now, coeffs.T, sigs
     return y_approx.T
 
-def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=False, return_lat_dist=False, **kwargs):
-    apply_basis = kwargs.get("apply_basis")
+def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=False, return_lat_dist=False, apply_basis=True, basis_device=None, **kwargs):
     
-    if "apply_basis" in kwargs:
-        kwargs.pop("apply_basis")
+    if isinstance(apply_basis, torch.Tensor) or apply_basis:
+        try:
+            if self.basis is not None:
+                apply_basis = self.basis
+                if basis_device is not None:
+                    apply_basis = apply_basis.to(basis_device)
+            else:
+                apply_basis = None
+        except AttributeError:
+
+            apply_basis = None
+    else:
+        apply_basis = None
         
     if kwargs.get("get_coeffs") or kwargs.get("get_basis_coeffs"):
         if return_dist or return_lat_dist:
@@ -233,6 +243,25 @@ class Vanilla_AE_MLP(get_autoencoder_base()):
             **kwargs,
         )
 
+class VRRAE_MLP(get_autoencoder_base()):
+    lin_mean: Linear
+    lin_logvar: Linear
+    typ: int
+
+    def __init__(self, in_size, latent_size, k_max, typ="eye", *, count=1, **kwargs):
+        super().__init__(
+            in_size,
+            latent_size,
+            count=count,
+            map_latent=False,
+            **kwargs,
+        )
+        self.lin_mean = Linear(k_max, k_max)
+        self.lin_logvar = Linear(k_max, k_max)
+        self.typ = typ
+
+    def _perform_in_latent(self, y, *args, k_max=None, epsilon=None, return_dist=False, return_lat_dist=False, **kwargs):
+        return latent_func_var_strong_RRAE(self, y, k_max, epsilon, return_dist, return_lat_dist, **kwargs)
 
 def sample(y, sample_cls, k_max=None, epsilon=None, *args, **kwargs):
     if epsilon is None:
