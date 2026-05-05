@@ -115,7 +115,7 @@ def latent_func_strong_RRAE(
         return u_now, coeffs.T, sigs
     return y_approx.T
 
-def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=False, return_lat_dist=False, apply_basis=True, basis_device=None, **kwargs):
+def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=False, return_lat_dist=False, return_lat_dist_basis=False, apply_basis=True, basis_device=None, **kwargs):
     
     if isinstance(apply_basis, torch.Tensor) or apply_basis:
         try:
@@ -158,6 +158,8 @@ def latent_func_var_strong_RRAE(self, y, k_max=None, epsilon=None, return_dist=F
     else:
         z = mean
 
+    if return_lat_dist_basis:
+        return z @ basis.T, mean.T, logvar.T, basis
     if return_lat_dist:
         return z @ basis.T, mean.T, logvar.T
     return z @ basis.T
