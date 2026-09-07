@@ -745,75 +745,165 @@ def stable_SVD(A):
     return StableSVD.apply(A)
 
 class StableSVD(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, A):
-        # Just compute standard SVD
-        U, S, Vh = torch.linalg.svd(A, full_matrices=False)
+    """
+    Reduced SVD with a stabilized backward pass.
 
-        # Save for backward
+    Forward:
+        A = U @ diag(S) @ Vh
+
+    Backward:
+        Avoids exploding / NaN gradients when:
+          - singular values are very small
+          - two singular values are equal or nearly equal
+    """
+
+    @staticmethod
+    def forward(ctx, A, rel_cutoff=1e-11):
+
+        if A.ndim != 2:
+            raise ValueError(
+                f"StableSVDFunction expects a 2D matrix, got {A.shape}"
+            )
+
+        # gesvd is generally more robust than the default gesvdj on CUDA
+        if A.is_cuda:
+            U, S, Vh = torch.linalg.svd(
+                A,
+                full_matrices=False,
+                driver="gesvd"
+            )
+        else:
+            U, S, Vh = torch.linalg.svd(
+                A,
+                full_matrices=False
+            )
+
         ctx.save_for_backward(U, S, Vh)
-        ctx.original_shape = A.shape
+        ctx.rel_cutoff = float(rel_cutoff)
 
         return U, S, Vh
 
     @staticmethod
-    def backward(ctx, dU, dS, dVh):
-        """
-        Backward pass for stable SVD.
-        Computes gradient w.r.t. input A given gradients on U, S, Vh.
-        """
+    def backward(ctx, grad_U, grad_S, grad_Vh):
+
         U, S, Vh = ctx.saved_tensors
-        m, n = ctx.original_shape[-2:]
+        rel_cutoff = ctx.rel_cutoff
 
-        dtype = U.dtype
-        device = U.device
+        V = Vh.transpose(-2, -1)
 
-        H = lambda x: x.transpose(-2, -1).conj()
-        T = lambda x: x.transpose(-2, -1)
+        # Autograd may give None if one of the outputs
+        # does not contribute to the loss.
+        if grad_U is None:
+            grad_U = torch.zeros_like(U)
 
-        # Diagonal helpers
-        def diag_embed(x):
-            return torch.diag_embed(x)
+        if grad_S is None:
+            grad_S = torch.zeros_like(S)
 
-        # Singular value vector to diagonal for broadcasting
-        S_mat = S.unsqueeze(-2)
-        S_diff = S_mat - S_mat.transpose(-2, -1)
+        if grad_Vh is None:
+            grad_Vh = torch.zeros_like(Vh)
 
-        # F matrix for repeated singular values
-        eps = 1e-20
-        F = torch.where(S_diff.abs() > eps, 1.0 / S_diff, torch.zeros_like(S_diff))
+        grad_V = grad_Vh.transpose(-2, -1)
 
-        # Gradient from singular values
-        dA = U @ diag_embed(dS) @ Vh
+        # ---------------------------------------------------------
+        # 1. Stabilize very small singular values
+        # ---------------------------------------------------------
 
-        # Contributions from U
-        Ut_dU = H(U) @ dU
-        skew_U = F * (Ut_dU - Ut_dU.transpose(-2, -1))
-        dA += U @ skew_U @ diag_embed(S) @ Vh
+        s_max = S.max()
+        cutoff = rel_cutoff * s_max
 
-        # Contributions from V
-        V = H(Vh)  # n x k
-        Vt_dV = H(V) @ H(dVh)  # k x k
-        skew_V = F * (Vt_dV - Vt_dV.transpose(-2, -1))
-        dA += U @ diag_embed(S) @ skew_V @ Vh
+        S_safe = torch.where(
+            S >= cutoff,
+            S,
+            torch.zeros_like(S)
+        )
 
-        # Rectangular adjustments (like JAX)
-        # s_inv = 1 / S with stable zero handling
-        s_zeros = (S == 0).to(dtype)
-        s_inv = 1.0 / (S + s_zeros) - s_zeros  # shape: (k,)
+        inv_S = torch.where(
+            S_safe > 0,
+            1.0 / S_safe,
+            torch.zeros_like(S_safe)
+        )
 
-        if m > n:
-            dAV = dA @ V
-            dA += (dAV - U @ (H(U) @ dAV)) * s_inv
-        elif n > m:
-            dAHU = H(dA) @ U
-            print("first term shape: ", H(dAHU - V @ (Vh @ dAHU)).shape)
-            print("s_inv shape: ", s_inv.shape)
+        # ---------------------------------------------------------
+        # 2. Stabilize 1 / (s_i^2 - s_j^2)
+        #
+        # This is the part that normally explodes when two
+        # singular values become equal / almost equal.
+        # ---------------------------------------------------------
 
-            dA += H(dAHU - V @ (Vh @ dAHU)) * s_inv.unsqueeze(1)
+        S2 = S_safe.square()
 
-        return dA
+        diff = S2[:, None] - S2[None, :]
 
+        gap_tol = rel_cutoff * torch.clamp(
+            S2.max(),
+            min=torch.finfo(S.dtype).tiny
+        )
+
+        inv_diff = torch.where(
+            diff.abs() > gap_tol,
+            1.0 / diff,
+            torch.zeros_like(diff)
+        )
+
+        # ---------------------------------------------------------
+        # Standard SVD backward formula
+        # ---------------------------------------------------------
+
+        Ut_dU = U.T @ grad_U
+        Vt_dV = V.T @ grad_V
+
+        skew_U = Ut_dU - Ut_dU.T
+        skew_V = Vt_dV - Vt_dV.T
+
+        D = torch.diag(S_safe)
+
+        middle = (
+            torch.diag(grad_S)
+            - (inv_diff * skew_U) @ D
+            - D @ (inv_diff * skew_V)
+        )
+
+        grad_A = U @ middle @ V.T
+
+        # ---------------------------------------------------------
+        # Rectangular-matrix terms
+        # ---------------------------------------------------------
+
+        m = U.shape[0]
+        n = V.shape[0]
+        r = S.numel()
+
+        D_inv = torch.diag(inv_S)
+
+        if m > r:
+            I_m = torch.eye(
+                m,
+                device=U.device,
+                dtype=U.dtype
+            )
+
+            grad_A += (
+                (I_m - U @ U.T)
+                @ grad_U
+                @ D_inv
+                @ V.T
+            )
+
+        if n > r:
+            I_n = torch.eye(
+                n,
+                device=V.device,
+                dtype=V.dtype
+            )
+
+            grad_A += (
+                U
+                @ D_inv
+                @ grad_V.T
+                @ (I_n - V @ V.T)
+            )
+
+        return grad_A, None
 def get_basis(get_basis, model=None, k_max=None, batch_size=None, inp=None, end_type="concat", device="cpu", basis_kwargs={}, pre_func_inp=lambda x:x, AE_func=lambda m:m):
     with torch.no_grad():
         if get_basis:
