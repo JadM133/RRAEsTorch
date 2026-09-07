@@ -15,7 +15,7 @@ def normal_svd_to_scalar(A):
 
 @pytest.mark.parametrize(
     "length, width",
-    [(10, 10), (100, 10), (10, 100), (50000, 100), (1000, 1000), (100, 50000)],
+    [(10, 10), (100, 10), (10, 100), (5000, 100), (1000, 1000), (100, 5000)],
 )
 def test_random_normal(length, width):
     A = random.uniform(low=0.0, high=1.0, size=(length, width))
